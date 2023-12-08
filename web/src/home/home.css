@@ -1,0 +1,26 @@
+.home-container {
+  margin-top: 80px !important;
+  height: 100vh;
+  flex-direction: row;
+  display: flex;
+}
+.left-section,
+.right-section {
+  flex: 1;
+}
+
+.left-section,
+.right-section {
+  padding: 20px;
+}
+
+@media screen and (max-width: 768px) {
+  .home-container {
+    flex-direction: column;
+  }
+
+  .left-section,
+  .right-section {
+    flex: 1;
+  }
+}

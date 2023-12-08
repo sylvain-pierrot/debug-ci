@@ -1,0 +1,31 @@
+html {
+  padding: 0;
+  margin: 0;
+  color: white;
+}
+
+body {
+  background-color: #222;
+  padding: 0;
+  margin: 0;
+  margin: 0;
+  overflow: hidden;
+  font-family: Poppins, sans-serif;
+}
+
+h3 {
+  margin-bottom: 15px;
+}
+
+ul {
+  list-style: none;
+  padding: 0;
+}
+li {
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}

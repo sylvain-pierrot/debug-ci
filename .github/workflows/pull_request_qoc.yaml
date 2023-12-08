@@ -1,0 +1,170 @@
+name: "Quality of Code"
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    # paths:
+    #   - "web/**"
+
+env:
+  PATH_TO_DOCKERFILE: .
+  WEB_DIR: web
+  API_DIR: api
+
+jobs:
+  web-report:
+    name: Lint and Check SPA
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WEB_DIR }}
+    outputs:
+      report: eslint-report.json
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: pnpm/action-setup@v2.4.0
+        name: Install pnpm
+        with:
+          version: 8
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - uses: actions/cache@v3
+        name: Setup pnpm cache
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run ESLint
+        run: pnpm run lint
+
+      - name: Upload report
+        uses: actions/upload-artifact@v3
+        with:
+          name: eslint-report
+          path: web/eslint-report.json
+
+  api-report:
+    name: Lint and Check API
+    runs-on: ubuntu-latest
+    outputs:
+      check: ${{ steps.check.outputs.check }}
+      lint: ${{ steps.lint.outputs.lint }}
+    defaults:
+      run:
+        working-directory: ${{ env.API_DIR }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - uses: dtolnay/rust-toolchain@stable
+        name: Install the Rust toolchain
+
+      - uses: Swatinem/rust-cache@v2
+        name: Use cached dependencies and artifacts
+
+      - uses: arduino/setup-protoc@v2
+        name: Install Protoc
+
+      - name: Check cargo build
+        run: cargo build --release --all-features --verbose
+
+      - id: check
+        name: Check formatting
+        if: always()
+        run: echo "check=$(cargo fmt --check)" >> "$GITHUB_OUTPUT"
+
+      - id: lint
+        name: Run lint
+        if: always()
+        run: echo "lint=$(cargo clippy -- -D warnings)" >> "$GITHUB_OUTPUT"
+
+  docker-report:
+    name: KICS Trigger
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: run kics Scan
+        uses: checkmarx/kics-github-action@v1.7.0
+        with:
+          path: ${{ env.PATH_TO_DOCKERFILE }}
+          fail_on: high
+          output_path: results-dir
+          type: Dockerfile
+
+      - name: Upload kics results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: kics-results
+          path: results-dir/results.json
+
+  pr-comment:
+    if: always()
+    name: PR comment
+    runs-on: ubuntu-latest
+    needs:
+      - web-report
+      - api-report
+      - docker-report
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Download ESLint report
+        uses: actions/download-artifact@v3
+        with:
+          name: eslint-report
+
+      - name: Print ESLint artifact
+        id: eslint
+        run: >-
+          echo "::set-output name=ESLINT::$(cat eslint-report.json | jq .)"
+
+      - name: Download KICS results
+        uses: actions/download-artifact@v3
+        with:
+          name: kics-results
+
+      - name: Print KICS artifact
+        id: kics
+        run: >-
+          echo "::set-output name=KICS::$(cat results.json | jq .)"
+
+      - run: cat results.json | jq .
+
+      - name: Comment PR
+        uses: thollander/actions-comment-pull-request@v2
+        with:
+          message: |
+            {
+              "actor" : "${{ github.actor }}",
+              "web_lint_status": "ok",
+              "web_lint_message": "${{ steps.eslint.outputs.ESLINT }}",
+              "web_check_status": "nok",
+              "web_check_message": "...",
+              "api_lint_status": "ok",
+              "api_lint_message": "${{ needs.api-report.outputs.lint }}",
+              "api_check_status": "nok",
+              "api_check_message": "${{ needs.api-report.outputs.check }}",
+              "dockerfile_scan": "${{ steps.kics.outputs.KICS }}"
+            }
