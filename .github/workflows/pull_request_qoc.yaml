@@ -161,7 +161,7 @@ jobs:
               "web_lint_status": "ok",
               "web_lint_message": "${{ steps.eslint.outputs.ESLINT }}",
               "web_check_status": "nok",
-              "web_check_message": "...",
+              "web_check_message": ".....",
               "api_lint_status": "ok",
               "api_lint_message": "${{ needs.api-report.outputs.lint }}",
               "api_check_status": "nok",
