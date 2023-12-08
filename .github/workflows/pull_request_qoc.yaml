@@ -20,7 +20,7 @@ jobs:
       run:
         working-directory: ${{ env.WEB_DIR }}
     outputs:
-      report: eslint-report.json
+      quality: ${{ steps.quality.outputs.quality }}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -55,18 +55,21 @@ jobs:
       - name: Run ESLint
         run: pnpm run lint
 
-      - name: Upload report
-        uses: actions/upload-artifact@v3
-        with:
-          name: eslint-report
-          path: web/eslint-report.json
+      - id: quality
+        if: always()
+        run: |
+          if [[ steps.lint.conclusion == 'success' ]]
+          then
+            echo 'quality="Ton code est OK"' >> "$GITHUB_OUTPUT"
+          else
+            echo 'quality="Ton code est KO"' >> "$GITHUB_OUTPUT"
+          fi
 
   api-report:
     name: Lint and Check API
     runs-on: ubuntu-latest
     outputs:
-      check: ${{ steps.check.outputs.check }}
-      lint: ${{ steps.lint.outputs.lint }}
+      quality: ${{ steps.quality.outputs.quality }}
     defaults:
       run:
         working-directory: ${{ env.API_DIR }}
@@ -89,12 +92,22 @@ jobs:
       - id: check
         name: Check formatting
         if: always()
-        run: echo "check=$(cargo fmt --check)" >> "$GITHUB_OUTPUT"
+        run: cargo fmt --check
 
       - id: lint
         name: Run lint
         if: always()
-        run: echo "lint=$(cargo clippy -- -D warnings)" >> "$GITHUB_OUTPUT"
+        run: cargo clippy -- -D warnings
+
+      - id: quality
+        if: always()
+        run: |
+          if [[ steps.check.conclusion == 'success' && steps.lint.conclusion == 'success' ]]
+          then
+            echo 'quality="Ton code est OK"' >> "$GITHUB_OUTPUT"
+          else
+            echo 'quality="Ton code est KO"' >> "$GITHUB_OUTPUT"
+          fi
 
   docker-report:
     name: KICS Trigger
@@ -130,16 +143,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Download ESLint report
-        uses: actions/download-artifact@v3
-        with:
-          name: eslint-report
-
-      - name: Print ESLint artifact
-        id: eslint
-        run: >-
-          echo "::set-output name=ESLINT::$(cat eslint-report.json | jq .)"
-
       - name: Download KICS results
         uses: actions/download-artifact@v3
         with:
@@ -150,21 +153,13 @@ jobs:
         run: >-
           echo "::set-output name=KICS::$(cat results.json | jq .)"
 
-      - run: cat results.json | jq .
-
       - name: Comment PR
         uses: thollander/actions-comment-pull-request@v2
         with:
           message: |
             {
               "actor" : "${{ github.actor }}",
-              "web_lint_status": "ok",
-              "web_lint_message": "${{ steps.eslint.outputs.ESLINT }}",
-              "web_check_status": "nok",
-              "web_check_message": ".....",
-              "api_lint_status": "ok",
-              "api_lint_message": "${{ needs.api-report.outputs.lint }}",
-              "api_check_status": "nok",
-              "api_check_message": "${{ needs.api-report.outputs.check }}",
+              "web_code_answers_instructions": "${{ needs.web-report.outputs.quality }}",
+              "api_code_answers_instructions": "${{ needs.api-report.outputs.quality }}",
               "dockerfile_scan": "${{ steps.kics.outputs.KICS }}"
             }
