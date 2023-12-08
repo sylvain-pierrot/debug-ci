@@ -60,9 +60,9 @@ jobs:
         run: |
           if [[ steps.lint.conclusion == 'success' ]]
           then
-            echo 'quality="Ton code est OK"' >> "$GITHUB_OUTPUT"
+            echo "quality=OK" >> "$GITHUB_OUTPUT"
           else
-            echo 'quality="Ton code est KO"' >> "$GITHUB_OUTPUT"
+            echo "quality=KO" >> "$GITHUB_OUTPUT"
           fi
 
   api-report:
@@ -104,9 +104,9 @@ jobs:
         run: |
           if [[ steps.check.conclusion == 'success' && steps.lint.conclusion == 'success' ]]
           then
-            echo 'quality="Ton code est OK"' >> "$GITHUB_OUTPUT"
+            echo "quality=OK" >> "$GITHUB_OUTPUT"
           else
-            echo 'quality="Ton code est KO"' >> "$GITHUB_OUTPUT"
+            echo "quality=KO" >> "$GITHUB_OUTPUT"
           fi
 
   docker-report:
@@ -136,9 +136,9 @@ jobs:
         run: |
           if [[ steps.scan.conclusion == 'success' ]]
           then
-            echo 'quality="Ton container est OK"' >> "$GITHUB_OUTPUT"
+            echo "quality=OK" >> "$GITHUB_OUTPUT"
           else
-            echo 'quality="Ton container est KO"' >> "$GITHUB_OUTPUT"
+            echo "quality=KO" >> "$GITHUB_OUTPUT"
           fi
 
   pr-comment:
@@ -159,7 +159,7 @@ jobs:
           message: |
             {
               "actor" : "${{ github.actor }}",
-              "web_code": ${{ needs.web-report.outputs.quality }},
-              "api_code": ${{ needs.api-report.outputs.quality }},
-              "container": ${{ needs.docker-report.outputs.quality }}
+              "web_code": "${{ needs.web-report.outputs.quality }}",
+              "api_code": "${{ needs.api-report.outputs.quality }}",
+              "container": "${{ needs.docker-report.outputs.quality }}"
             }
