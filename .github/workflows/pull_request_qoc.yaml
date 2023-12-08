@@ -112,11 +112,14 @@ jobs:
   docker-report:
     name: KICS Trigger
     runs-on: ubuntu-latest
+    outputs:
+      quality: ${{ steps.quality.outputs.quality }}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
       - name: run kics Scan
+        id: scan
         uses: checkmarx/kics-github-action@v1.7.0
         with:
           path: ${{ env.PATH_TO_DOCKERFILE }}
@@ -124,12 +127,19 @@ jobs:
           output_path: results-dir
           type: Dockerfile
 
-      - name: Upload kics results
+      - name: display kics results
+        run: |
+          cat results-dir/results.json
+
+      - id: quality
         if: always()
-        uses: actions/upload-artifact@v3
-        with:
-          name: kics-results
-          path: results-dir/results.json
+        run: |
+          if [[ steps.scan.conclusion == 'success' ]]
+          then
+            echo 'quality="Ton container est OK"' >> "$GITHUB_OUTPUT"
+          else
+            echo 'quality="Ton container est KO"' >> "$GITHUB_OUTPUT"
+          fi
 
   pr-comment:
     if: always()
@@ -143,23 +153,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Download KICS results
-        uses: actions/download-artifact@v3
-        with:
-          name: kics-results
-
-      - name: Print KICS artifact
-        id: kics
-        run: >-
-          echo "::set-output name=KICS::$(cat results.json | jq .)"
-
       - name: Comment PR
         uses: thollander/actions-comment-pull-request@v2
         with:
           message: |
             {
               "actor" : "${{ github.actor }}",
-              "web_code_answers_instructions": "${{ needs.web-report.outputs.quality }}",
-              "api_code_answers_instructions": "${{ needs.api-report.outputs.quality }}",
-              "dockerfile_scan": "${{ steps.kics.outputs.KICS }}"
+              "web_code": ${{ needs.web-report.outputs.quality }},
+              "api_code": ${{ needs.api-report.outputs.quality }},
+              "container": ${{ needs.docker-report.outputs.quality }}
             }
