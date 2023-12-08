@@ -20,7 +20,7 @@ jobs:
       run:
         working-directory: ${{ env.WEB_DIR }}
     outputs:
-      report: eslint-report.json
+      quality: ${{ steps.quality.outputs.quality }}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
@@ -55,18 +55,21 @@ jobs:
       - name: Run ESLint
         run: pnpm run lint
 
-      - name: Upload report
-        uses: actions/upload-artifact@v3
-        with:
-          name: eslint-report
-          path: web/eslint-report.json
+      - id: quality
+        if: always()
+        run: |
+          if [[ steps.lint.conclusion == 'success' ]]
+          then
+            echo "quality=OK" >> "$GITHUB_OUTPUT"
+          else
+            echo "quality=KO" >> "$GITHUB_OUTPUT"
+          fi
 
   api-report:
     name: Lint and Check API
     runs-on: ubuntu-latest
     outputs:
-      check: ${{ steps.check.outputs.check }}
-      lint: ${{ steps.lint.outputs.lint }}
+      quality: ${{ steps.quality.outputs.quality }}
     defaults:
       run:
         working-directory: ${{ env.API_DIR }}
@@ -89,21 +92,34 @@ jobs:
       - id: check
         name: Check formatting
         if: always()
-        run: echo "check=$(cargo fmt --check)" >> "$GITHUB_OUTPUT"
+        run: cargo fmt --check
 
       - id: lint
         name: Run lint
         if: always()
-        run: echo "lint=$(cargo clippy -- -D warnings)" >> "$GITHUB_OUTPUT"
+        run: cargo clippy -- -D warnings
+
+      - id: quality
+        if: always()
+        run: |
+          if [[ steps.check.conclusion == 'success' && steps.lint.conclusion == 'success' ]]
+          then
+            echo "quality=OK" >> "$GITHUB_OUTPUT"
+          else
+            echo "quality=KO" >> "$GITHUB_OUTPUT"
+          fi
 
   docker-report:
     name: KICS Trigger
     runs-on: ubuntu-latest
+    outputs:
+      quality: ${{ steps.quality.outputs.quality }}
     steps:
       - name: Checkout
         uses: actions/checkout@v3
 
       - name: run kics Scan
+        id: scan
         uses: checkmarx/kics-github-action@v1.7.0
         with:
           path: ${{ env.PATH_TO_DOCKERFILE }}
@@ -111,12 +127,19 @@ jobs:
           output_path: results-dir
           type: Dockerfile
 
-      - name: Upload kics results
+      - name: display kics results
+        run: |
+          cat results-dir/results.json
+
+      - id: quality
         if: always()
-        uses: actions/upload-artifact@v3
-        with:
-          name: kics-results
-          path: results-dir/results.json
+        run: |
+          if [[ steps.scan.conclusion == 'success' ]]
+          then
+            echo "quality=OK" >> "$GITHUB_OUTPUT"
+          else
+            echo "quality=KO" >> "$GITHUB_OUTPUT"
+          fi
 
   pr-comment:
     if: always()
@@ -130,41 +153,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Download ESLint report
-        uses: actions/download-artifact@v3
-        with:
-          name: eslint-report
-
-      - name: Print ESLint artifact
-        id: eslint
-        run: >-
-          echo "::set-output name=ESLINT::$(cat eslint-report.json | jq .)"
-
-      - name: Download KICS results
-        uses: actions/download-artifact@v3
-        with:
-          name: kics-results
-
-      - name: Print KICS artifact
-        id: kics
-        run: >-
-          echo "::set-output name=KICS::$(cat results.json | jq .)"
-
-      - run: cat results.json | jq .
-
       - name: Comment PR
         uses: thollander/actions-comment-pull-request@v2
         with:
           message: |
             {
               "actor" : "${{ github.actor }}",
-              "web_lint_status": "ok",
-              "web_lint_message": "${{ steps.eslint.outputs.ESLINT }}",
-              "web_check_status": "nok",
-              "web_check_message": "...",
-              "api_lint_status": "ok",
-              "api_lint_message": "${{ needs.api-report.outputs.lint }}",
-              "api_check_status": "nok",
-              "api_check_message": "${{ needs.api-report.outputs.check }}",
-              "dockerfile_scan": "${{ steps.kics.outputs.KICS }}"
+              "web_code": "${{ needs.web-report.outputs.quality }}",
+              "api_code": "${{ needs.api-report.outputs.quality }}",
+              "container": "${{ needs.docker-report.outputs.quality }}"
             }
